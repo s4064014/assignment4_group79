@@ -1,113 +1,114 @@
 package au.edu.rmit.sct;
 
 import java.io.*;
-import java.nio.file.*;
-import java.time.*;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class demeritPoints {
     private String personID;
     private String offenseDate;
     private int demeritPoints;
-    //private String birthdate;
+    public boolean isSuspended = false;
+    private int age;
+    private List<String> demeritRecords = new ArrayList<>();
 
     // Constructor
     public demeritPoints(String personID, String offenseDate, int demeritPoints, String birthdate) {
         this.personID = personID;
         this.offenseDate = offenseDate;
         this.demeritPoints = demeritPoints;
-        //this.birthdate = birthdate;
+        this.age = calculateAgeFromBirthdate(birthdate);
     }
 
-    // Function with "add" prefix parameters for clarity
-    public String addDemeritPoints(String addPersonID, String addOffenseDate, int addDemeritPoints, String addBirthdate) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    private int calculateAgeFromBirthdate(String birthdate) {
+        int birthYear = Integer.parseInt(birthdate.substring(6));
+        int currentYear = java.time.LocalDate.now().getYear();
+        return currentYear - birthYear;
+    }
 
-        // Validate offense date
-        LocalDate parsedOffenseDate;
-        try {
-            parsedOffenseDate = LocalDate.parse(addOffenseDate, formatter);
-        } catch (Exception e) {
-            System.out.println("Invalid offense date format.");
+    public String adddemeritPoints(String offenseDate, int points, int currentYear) {
+        if (offenseDate.length() != 10 || offenseDate.charAt(2) != '-' || offenseDate.charAt(5) != '-') {
+            return "Failed";
+        }
+        if (points < 1 || points > 6) {
             return "Failed";
         }
 
-        // Validate demerit points range
-        if (addDemeritPoints < 1 || addDemeritPoints > 6) {
-            System.out.println("Invalid demerit points.");
-            return "Failed";
-        }
-        
-        // Validate birthdate format
-        LocalDate parsedBirthdate;
         try {
-            parsedBirthdate = LocalDate.parse(addBirthdate, formatter);
-        } catch (Exception e) {
-            System.out.println("Invalid birthdate format.");
-            return "Failed";
-        }
-
-        // Update internal class variables
-        this.personID = addPersonID;
-        this.offenseDate = addOffenseDate;
-        this.demeritPoints = addDemeritPoints;
-        //this.birthdate = addBirthdate;
-
-        long age = ChronoUnit.YEARS.between(parsedBirthdate, LocalDate.now());
-        LocalDate twoYearsAgo = parsedOffenseDate.minusYears(2);
-
-        File file = new File("persons.txt");
-        try {
-            if (!file.exists()) file.createNewFile();
-
-            List<String> lines = Files.readAllLines(file.toPath());
+            File file = new File("demerit.txt");
             List<String> updatedLines = new ArrayList<>();
             boolean found = false;
 
-            for (String line : lines) {
-                String[] parts = line.split(",", -1);
-                if (parts.length < 5) {
-                    updatedLines.add(line);
-                    continue;
-                }
-
-                if (parts[0].equals(this.personID)) {
-                    found = true;
-                    int existingPoints = 0;
-
-                    if (parts.length > 5) {
-                        for (int i = 5; i < parts.length; i += 2) {
-                            LocalDate pastDate = LocalDate.parse(parts[i], formatter);
-                            if (!pastDate.isBefore(twoYearsAgo)) {
-                                existingPoints += Integer.parseInt(parts[i + 1]);
-                            }
+            // If file exists, read existing lines
+            if (file.exists()) {
+                BufferedReader reader = new BufferedReader(new FileReader(file));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split(",");
+                    if (parts[0].equals(personID)) {
+                        // Load existing demeritRecords from file first
+                        demeritRecords.clear();
+                        for (int i = 1; i < parts.length; i += 2) {
+                            String existingDate = parts[i];
+                            String existingPoints = parts[i + 1];
+                            demeritRecords.add(existingDate + ":" + existingPoints);
                         }
+                        found = true;
+                    } else {
+                        updatedLines.add(line);
                     }
+                }
+                reader.close();
+            }
 
-                    int totalPoints = existingPoints + this.demeritPoints;
-                    boolean shouldSuspend = (age < 21 && totalPoints > 6) || (age >= 21 && totalPoints > 12);
-                    if (shouldSuspend) {
-                        System.out.println("Person is now suspended.");
-                    }
+            // Now add the new record to demeritRecords only if not already present
+            String newRecord = offenseDate + ":" + points;
+            if (!demeritRecords.contains(newRecord)) {
+                demeritRecords.add(newRecord);
+            }
 
-                    // Append new demerit info
-                    String updatedLine = line + "," + this.offenseDate + "," + this.demeritPoints;
-                    updatedLines.add(updatedLine);
-                } else {
-                    updatedLines.add(line);
+            // Calculate suspension
+            int totalPoints = 0;
+            for (String record : demeritRecords) {
+                String[] parts = record.split(":");
+                String date = parts[0];
+                int recordYear = Integer.parseInt(date.substring(6));
+                int recordPoints = Integer.parseInt(parts[1]);
+
+                if (currentYear - recordYear <= 2) {
+                    totalPoints += recordPoints;
                 }
             }
 
-            if (!found) return "Failed";
+            if ((age < 21 && totalPoints > 6) || (age >= 21 && totalPoints > 12)) {
+                isSuspended = true;
+            }
 
-            Files.write(file.toPath(), updatedLines);
+            // Now rebuild this person's line
+            StringBuilder sb = new StringBuilder();
+            sb.append(personID);
+            for (String rec : demeritRecords) {
+                String[] recParts = rec.split(":");
+                sb.append(",").append(recParts[0]).append(",").append(recParts[1]);
+            }
+
+            // Add or update this person's line in file
+            updatedLines.add(sb.toString());
+
+            // Write all lines back to file (overwrite)
+            BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+            for (String line : updatedLines) {
+                writer.write(line);
+                writer.newLine();
+            }
+            writer.close();
+
             return "Success";
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("File write error.");
             return "Failed";
         }
     }
+
 }
