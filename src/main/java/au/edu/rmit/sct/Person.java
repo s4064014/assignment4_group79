@@ -1,10 +1,13 @@
 package au.edu.rmit.sct;
 
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 
 public class Person {
     private String personID;
@@ -13,6 +16,7 @@ public class Person {
     private String address;
     private String birthdate;
 
+    // Constructor to initialize Person fields
     public Person(String personID, String firstName, String lastName, String address, String birthdate) {
         this.personID = personID;
         this.firstName = firstName;
@@ -21,6 +25,7 @@ public class Person {
         this.birthdate = birthdate;
     }
 
+    // Method to validate and add a Person record to persons.txt
     public boolean addPerson() {
         // Condition 1: Validate personID
         if (personID == null || personID.length() != 10) return false;
@@ -48,19 +53,41 @@ public class Person {
         String state = parts[3];
         if (!state.equals("Victoria")) return false;
 
-        // Condition 3: Validate birthdate format
+        // Condition 3: Validate birthdate format: dd-MM-yyyy
         SimpleDateFormat sdf = new SimpleDateFormat("dd-MM-yyyy");
         sdf.setLenient(false);
         try {
-            Date  dob= sdf.parse(birthdate);
+            Date dob = sdf.parse(birthdate);
         } catch (ParseException e) {
             return false;
         }
 
-        // All conditions passed, write to file
-        try (FileWriter writer = new FileWriter("persons.txt", true)) {
-            writer.write(personID + "," + firstName + "," + lastName + "," + address + "," + birthdate + "\n");
+        // Prepare the line to write
+        String newLine = personID + "," + firstName + "," + lastName + "," + address + "," + birthdate;
+
+        // Write to persons.txt with duplicate removal logic
+        File file = new File("persons.txt");
+        try {
+            if (!file.exists()) file.createNewFile();
+
+            // Read all existing lines
+            List<String> existingLines = Files.readAllLines(file.toPath());
+
+            // Remove any existing line with the same personID
+            List<String> updatedLines = existingLines.stream()
+                    .filter(line -> !line.startsWith(personID + ","))
+                    .collect(Collectors.toList());
+
+            // Overwrite file without the old record (if any)
+            Files.write(file.toPath(), updatedLines, StandardOpenOption.TRUNCATE_EXISTING);
+
+            // Append new record
+            try (FileWriter writer = new FileWriter(file, true)) {
+                writer.write(newLine + "\n");
+            }
+
             return true;
+
         } catch (IOException e) {
             e.printStackTrace();
             return false;
